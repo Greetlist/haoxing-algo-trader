@@ -8,6 +8,8 @@ import datetime as dt
 import sys
 import logging
 import subprocess as sub
+import threading
+import copy
 
 class HPITrader:
     def __init__(self, config):
@@ -36,17 +38,14 @@ class HPITrader:
 
         trade_account_list = self.trade_api.get_tradeaccount()
         for item in trade_account_list:
-            self.logger.info("trade account: ", item)
+            self.logger.info("trade account: {}".format(item))
             if item["account_id"] == config["fund_account"]:
                 if item["status"] == 0:
                     self.logger.info("Need Activate Account")
                     self.trade_api.activate_account(config["fund_account"], config["fund_account_password"])
                 self.account_id = config["fund_account"]
-
-        sys.exit(1)
-        self.call_back = TraderCallback(self.config, token)
-        self.call_back.init()
-        self.call_back.start()
+        self.callback_thread = threading.Thread(target=self.start_callback)
+        self.callback_thread.start()
 
     def init_logger(self):
         sub.check_call("mkdir -p {}".format(self.config["log_base_dir"]), shell=True)
@@ -73,47 +72,70 @@ class HPITrader:
     def stop_signal_handler(self):
         self.stop = True
 
+    def start_callback(self):
+        self.call_back = TraderCallback(self.config, self.cli_token, self)
+        self.call_back.init()
+        self.call_back.start()
+
     def start(self):
         while not self.stop:
+            time.sleep(1)
             if os.path.exists(self.targetpos_filename):
                 file_stat = os.stat(self.targetpos_filename)
-                self.logger.info(file_stat.st_ctime)
                 if file_stat.st_ctime <= self.last_change_time:
                     self.logger.info("TargetPos File not change, continue")
-                    time.sleep(1)
                     continue
 
-                target_pos_df = pd.read_csv(self.targetpos_filename)[self.start_order_index:]
+                target_pos_df = pd.read_csv(self.targetpos_filename, dtype={"OrderID":str, "InstrumentID":str})[self.start_order_index:]
                 task_list = self.gen_total_task_list(target_pos_df)
-                if len(task_list) > 0:
-                    self.logger.info(task_list)
-                    #res = self.trade_api.create_tasks(task_list)
-                    #self.logger.info(res)
-                    if True:
-                        self.start_order_index += len(task_list)
-                        self.save_idx()
-            time.sleep(1)
+                if len(task_list) <= 0:
+                    continue
+
+                self.logger.info(task_list)
+                res = self.trade_api.create_tasks(task_list)
+                self.logger.info(res)
+
+                if res["error_code"] == 0:
+                    self.extract_all_failed_records(target_pos_df.to_dict("records"), res["datas"])
+                    self.start_order_index += len(task_list)
+                    self.save_idx()
+                else:
+                    self.logger.error("Batch Send Order Error, error_msg is: ".format(res["message"]))
 
     def gen_total_task_list(self, df):
         task_list = []
         for item in df.to_dict("records"):
             time_list = item["ExtraData"].split(";")
             if len(time_list) < 2:
-                self.logger.info("Invalid record item: ", item)
+                self.logger.info("Invalid record item: {}".format(item))
                 return []
             start_time_str, end_time_str = time_list[0], time_list[1]
             single_task = StockTask(
                 account_id=self.account_id,
                 start_time=self.convert_time(start_time_str),
                 end_time=self.convert_time(end_time_str),
-                symbol=self.convert_exchange(item["ExchangeID"]),
+                symbol=self.convert_exchange(item["ExchangeID"])+str(item["InstrumentID"]),
                 algo_name=self.config["algo_name"],
-                task_qty=item["Qty"],
+                task_qty=int(item["Qty"]),
                 trade_type=self.convert_direction(item["Side"]),
                 qty_type=QtyType.DELTA
             )
             task_list.append(single_task)
         return task_list
+
+    def extract_all_failed_records(self, target_pos_list, res_list):
+        failed_csv_filename = self.config["output_insert_error_template"].format(self.today_str)
+        failed_list = [] \
+            if not os.path.exists(failed_csv_filename) \
+            else pd.read_csv(failed_csv_filename, dtype={"OrderID":str, "InstrumentID":str}).to_dict('records')
+        for idx in range(len(res_list)):
+            single_res = res_list[idx]
+            if single_res["error_code"] != 0:
+                item = copy.deepcopy(target_pos_list[idx])
+                item["ErrorMsg"] = single_res["message"]
+                failed_list.append(item)
+        failed_df = pd.DataFrame(failed_list)
+        failed_df.to_csv(failed_csv_filename, index=False)
 
     def convert_exchange(self, origin_exchange):
         return "XSHE" if origin_exchange == "SZ" else "XSHG"
@@ -123,7 +145,7 @@ class HPITrader:
 
     def convert_time(self, time_str):
         d = dt.datetime.strptime(time_str, "%H:%M:%S")
-        self.logger.info(d.hour, d.minute, d.second)
+        self.logger.info("Hour: {}, Minute: {}, Second: {}".format(d.hour, d.minute, d.second))
         return d.hour * 10000 + d.minute * 100 + d.second
 
     def save_idx(self):

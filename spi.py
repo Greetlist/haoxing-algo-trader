@@ -1,13 +1,14 @@
 from HPI.wsclient import WSClient
 
 class TraderCallback:
-    def __init__(self, config, token):
+    def __init__(self, config, token, trader):
         self.config = config
         self.ws_client = WSClient(
             config["server_addr"],
-            user=config["user"],
+            user=config["trader_user"],
             cli_token=token,
         )
+        self.trader = trader
 
     def init(self):
         self.ws_client.regist("orders", self.OnRtnOrder)
@@ -16,17 +17,18 @@ class TraderCallback:
         self.ws_client.regist("account_info", self.OnQryAccount)
 
     def OnRtnOrder(self, sub_orders):
-        print("OnRtnOrder, sub order")
+        self.trader.logger.info("OnRtnOrder, sub order")
 
     def OnRtnTask(self, ori_orders):
-        print("OnRtnTask, origin order")
+        self.trader.logger.info("OnRtnTask, origin order")
 
     def OnQryPosition(self, positions):
-        print("OnQryPosition")
+        self.trader.logger.info("OnQryPosition")
 
     def OnQryAccount(self, account_info):
-        print("OnQryAccount")
-        print(account_info)
+        self.trader.logger.info("OnQryAccount")
+        self.trader.logger.info(account_info)
 
     def start(self):
+        self.trader.logger.info("Websocket client Start")
         self.ws_client.start()
