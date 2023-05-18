@@ -86,7 +86,9 @@ class HPITrader:
                     self.logger.info("TargetPos File not change, continue")
                     continue
 
-                target_pos_df = pd.read_csv(self.targetpos_filename, dtype={"OrderID":str, "InstrumentID":str})[self.start_order_index:]
+                target_pos_df = pd.read_csv(
+                    self.targetpos_filename,
+                    dtype={"OrderID":str, "InstrumentID":str})[self.start_order_index:]
                 task_list = self.gen_total_task_list(target_pos_df)
                 if len(task_list) <= 0:
                     continue
