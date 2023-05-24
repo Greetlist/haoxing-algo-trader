@@ -14,6 +14,7 @@ class HPIQuery:
             password=self.config["trader_password"],
         )
         login_res = self.trade_api.login()
+        print(login_res)
         self.account_id = config["fund_account"]
         self.query_num = config["query_num"]
 
@@ -38,11 +39,12 @@ class HPIQuery:
             page=self.query_sub_order_page,
             limit=self.query_num,
         )
+
+        order_list = order_res["data"]
+        for order in order_list:
+            print(order)
         if len(order_res) == self.query_num:
             self.query_sub_order_num += 1
-
-        for order in sub_orders:
-            print(order)
 
     def query_trade(self):
         start_page = 1
@@ -54,8 +56,9 @@ class HPIQuery:
                 page=start_page,
                 limit=self.query_num,
             )
-            for trade in trade_res:
-                print(trade)
+            trade_list = trade_res["data"]
+            for trade in trade_list:
+                print("Trade: {}".format(trade))
 
             total_trade.extend(trade_res)
             if len(trade_res) == self.query_num:
@@ -65,9 +68,11 @@ class HPIQuery:
         print(total_trade)
 
     def query_position(self):
-        positions = self.trade_api.get_positions(account_id=self.account_id)
-        for position in positions:
-            print(position)
+        pos_ret = self.trade_api.get_positions(account_id=self.account_id)
+        position_list = pos_ret["data"]
+        print(pos_ret["total"])
+        #for position in position_list:
+        #    print('Position: {}'.format(position))
 
     def query_account(self):
         cash_info = self.trade_api.get_cash(
@@ -79,8 +84,8 @@ def test(config_file="./account.ini"):
     config = configparser.ConfigParser()
     config.read(config_file)
     q = HPIQuery(config["Trade"])
-    q.query_order();
-    q.query_trade();
+    #q.query_order();
+    #q.query_trade();
     q.query_position();
     q.query_account()
 
