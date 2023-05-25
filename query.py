@@ -27,27 +27,34 @@ class HPIQuery:
             "TradeStatus", "TradeTime"
         ]
 
-    def query_trade(self):
+    def query_trade(self, ftype):
         start_page = 1
-        total_trade = []
+        total_convert_list = []
         while True:
-            trade_res = self.trade_api.get_orders(
-                account_id=self.account_id,
-                order_status=OrderStatus.TRADED,
-                page=start_page,
-                limit=self.query_num,
-            )
-            trade_list = trade_res["data"]
-            for trade in trade_list:
-                total_trade.append(self.convert_trade_item(trade))
+            if ftype == "trade":
+                query_res = self.trade_api.get_orders(
+                    account_id=self.account_id,
+                    order_status=OrderStatus.TRADED,
+                    page=start_page,
+                    limit=self.query_num,
+                )
+            else:
+                query_res = self.trade_api.get_orders(
+                    account_id=self.account_id,
+                    page=start_page,
+                    limit=self.query_num,
+                )
+            data_list = query_res["data"]
+            for item in data_list:
+                total_convert_list.append(self.convert_item(item, ftype))
 
-            if len(trade_res) == self.query_num:
+            if len(query_res) == self.query_num:
                 start_page += 1
             else:
                 break
 
-        df = pd.DataFrame(total_trade)
-        dump_csv = "{}_trade.csv".format(self.today_str)
+        df = pd.DataFrame(total_convert_list)
+        dump_csv = "{}_{}.csv".format(self.today_str, ftype)
         tmp_csv = dump_csv + ".tmp"
         df.to_csv(tmp_csv, index=False)
         sub.check_call("mv {} {}".format(tmp_csv, dump_csv), shell=True)
@@ -65,20 +72,20 @@ class HPIQuery:
         )
         print(cash_info)
 
-    def convert_trade_item(self, trade):
-        convert_item = dict()
-        convert_item["AccountUid"] = self.account_id
-        convert_item["OrderId"] = 0 #TODO
-        convert_item["OrderSysId"] = trade["order_sysid"]
+    def convert_item(self, trade, ftype):
+        res = dict()
+        res["AccountUid"] = self.account_id
+        res["OrderId"] = 0 #TODO
+        res["OrderSysId"] = trade["order_sysid"]
         eid_list = trade["wid"].split(".")
-        convert_item["InstrumentId"] = eid_list[0]
-        convert_item["Exchange"] = eid_list[1]
-        convert_item["OrderSide"] = "Buy" if trade["side"] == 1 else "Sell"
-        convert_item["FillSize"] = trade["traded_volume"]
-        convert_item["FillPrice"] = trade["avg_traded_price"]
-        convert_item["TradeStatus"] = self.convert_order_status(trade["order_status"])
-        convert_item["TradeTime"] = self.convert_order_time(trade["last_update_time"])
-        return convert_item
+        res["InstrumentId"] = eid_list[0]
+        res["Exchange"] = eid_list[1]
+        res["OrderSide"] = "Buy" if trade["side"] == 1 else "Sell"
+        res["FillSize"] = trade["traded_volume"]
+        res["FillPrice"] = trade["avg_traded_price"]
+        res["TradeStatus"] = self.convert_order_status(trade["order_status"])
+        res["TradeTime"] = self.convert_order_time(trade["last_update_time"])
+        return res
 
     def convert_order_status(self, status):
         if status == OrderStatus.INSERTED:
@@ -102,8 +109,8 @@ def test(config_file="./account.ini"):
     config.read(config_file)
     q = HPIQuery(config["Trade"])
     #q.query_order();
-    q.query_trade()
-    q.query_trade()
+    q.query_trade("trade")
+    q.query_trade("order")
     #q.query_position();
     #q.query_account()
 
