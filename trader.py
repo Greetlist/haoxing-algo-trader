@@ -83,13 +83,13 @@ class HPITrader:
             if os.path.exists(self.targetpos_filename):
                 file_stat = os.stat(self.targetpos_filename)
                 if file_stat.st_ctime <= self.last_change_time:
-                    self.logger.info("TargetPos File not change, continue")
                     continue
 
                 target_pos_df = pd.read_csv(
                     self.targetpos_filename,
                     dtype={"OrderID":str, "InstrumentID":str})[self.start_order_index:]
                 task_list = self.gen_total_task_list(target_pos_df)
+                self.last_change_time = file_stat.st_ctime
                 if len(task_list) <= 0:
                     continue
 

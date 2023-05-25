@@ -23,11 +23,11 @@ class TraderCallback:
         self.trader.logger.info("OnRtnTask, origin order")
 
     def OnQryPosition(self, positions):
-        self.trader.logger.info("OnQryPosition")
+        #self.trader.logger.info("OnQryPosition")
         self.trader.logger.info("{}".format(len(positions)))
 
     def OnQryAccount(self, account_info):
-        self.trader.logger.info("OnQryAccount")
+        #self.trader.logger.info("OnQryAccount")
         self.trader.logger.info(account_info)
 
     def start(self):
