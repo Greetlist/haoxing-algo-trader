@@ -83,8 +83,10 @@ class HPITrader:
             if os.path.exists(self.targetpos_filename):
                 file_stat = os.stat(self.targetpos_filename)
                 if file_stat.st_ctime <= self.last_change_time:
+                    self.logger.info("FileChangeTime: {}, LastChangeTime: {}, Skip".format(file_stat.st_ctime , self.last_change_time))
                     continue
 
+                self.logger.info("Start to Send Orders")
                 target_pos_df = pd.read_csv(
                     self.targetpos_filename,
                     dtype={"OrderID":str, "InstrumentID":str})[self.start_order_index:]
@@ -136,6 +138,8 @@ class HPITrader:
                 item = copy.deepcopy(target_pos_list[idx])
                 item["ErrorMsg"] = single_res["message"]
                 failed_list.append(item)
+        if len(failed_df) == 0:
+            return
         failed_df = pd.DataFrame(failed_list)
         failed_df.to_csv(failed_csv_filename, index=False)
 

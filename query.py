@@ -27,7 +27,7 @@ class HPIQuery:
             "TradeStatus", "TradeTime"
         ]
 
-    def query_trade(self, ftype):
+    def query(self, ftype):
         start_page = 1
         total_convert_list = []
         while True:
@@ -54,23 +54,31 @@ class HPIQuery:
                 break
 
         df = pd.DataFrame(total_convert_list)
-        dump_csv = "{}_{}.csv".format(self.today_str, ftype)
-        tmp_csv = dump_csv + ".tmp"
-        df.to_csv(tmp_csv, index=False)
-        sub.check_call("mv {} {}".format(tmp_csv, dump_csv), shell=True)
+        dump_name = "{}_{}.csv".format(self.today_str, ftype)
+        self.dump_to_csv(df, dump_name)
 
     def query_position(self):
         pos_ret = self.trade_api.get_positions(account_id=self.account_id)
-        position_list = pos_ret["data"]
-        print(pos_ret["total"])
-        #for position in position_list:
-        #    print('Position: {}'.format(position))
+        positions = pos_ret["data"]
+        position_list = []
+        for position in positions:
+            position_list.append(self.convert_position_item(position))
+            print('Position: {}'.format(position))
+            sys.exit(1)
+        df = pd.DataFrame(position_list)
+        dump_name = "{}_pos.csv".format(self.today_str)
+        self.dump_to_csv(df, dump_name)
 
     def query_account(self):
         cash_info = self.trade_api.get_cash(
             account_id=self.account_id
         )
         print(cash_info)
+
+    def dump_to_csv(self, df, dump_name):
+        tmp_name = dump_name + ".tmp"
+        df.to_csv(tmp_name, index=False)
+        sub.check_call("mv {} {}".format(tmp_name, dump_name), shell=True)
 
     def convert_item(self, trade, ftype):
         res = dict()
@@ -85,6 +93,19 @@ class HPIQuery:
         res["FillPrice"] = trade["avg_traded_price"]
         res["TradeStatus"] = self.convert_order_status(trade["order_status"])
         res["TradeTime"] = self.convert_order_time(trade["last_update_time"])
+        return res
+
+    def convert_position_item(self, position):
+        res = dict()
+{'account_id': 'hx003', 'date': '20230526', 'wid': '603369.SH', 'last_update_time': 1685068828500132, 'current_long_pos': 9000, 'td_long_pos': 9000, 'td_short_pos': 0, 'yd_long_pos': 0, 'yd_short_pos': 0, 'pending_long_close_pos': 0, 'pending_short_close_pos': 0, 'pending_long_open_pos': 0, 'pending_short_open_pos': 0}
+        res["AccountUid"] = position["account_id"]
+        eid_list = position["wid"].split(".")
+        res["InstrumentId"] = eid_list[0]
+        res["ExchangeId"] = eid_list[1]
+        res["FinanceType"] = "Stock"
+        res["InitYestSize"] = position["yd_long_pos"] + position["yd_short_pos"]
+        res["TotalBuySize"] = position["td_long_pos"]
+        res["TotalSellSize"] = position["td_short_pos"]
         return res
 
     def convert_order_status(self, status):
@@ -109,9 +130,9 @@ def test(config_file="./account.ini"):
     config.read(config_file)
     q = HPIQuery(config["Trade"])
     #q.query_order();
-    q.query_trade("trade")
-    q.query_trade("order")
-    #q.query_position();
+    q.query("trade")
+    q.query("order")
+    q.query_position();
     #q.query_account()
 
 if __name__ == '__main__':
