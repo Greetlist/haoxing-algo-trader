@@ -7,8 +7,9 @@ import pandas as pd
 import subprocess as sub
 
 class HPIQuery:
-    def __init__(self, config):
+    def __init__(self, config, trader):
         self.config = config
+        self.trader = trader
         self.today_str = dt.datetime.now().strftime("%Y%m%d")
         self.trade_api = HttpClient(
             self.config["server_addr"],
@@ -58,13 +59,11 @@ class HPIQuery:
         self.dump_to_csv(df, dump_name)
 
     def query_position(self):
-        pos_ret = self.trade_api.get_positions(account_id=self.account_id)
+        pos_ret = self.trade_api.get_positions(account_id=self.account_id, limit=False)
         positions = pos_ret["data"]
         position_list = []
         for position in positions:
             position_list.append(self.convert_position_item(position))
-            print('Position: {}'.format(position))
-            sys.exit(1)
         df = pd.DataFrame(position_list)
         dump_name = "{}_pos.csv".format(self.today_str)
         self.dump_to_csv(df, dump_name)
@@ -83,8 +82,8 @@ class HPIQuery:
     def convert_item(self, trade, ftype):
         res = dict()
         res["AccountUid"] = self.account_id
-        res["OrderId"] = 0 #TODO
-        res["OrderSysId"] = trade["order_sysid"]
+        res["OrderId"] = self.trader.sys_id_local_id_map[trade["client_task_id"]]
+        res["OrderSysId"] = trade["client_task_id"]
         eid_list = trade["wid"].split(".")
         res["InstrumentId"] = eid_list[0]
         res["Exchange"] = eid_list[1]
@@ -97,7 +96,6 @@ class HPIQuery:
 
     def convert_position_item(self, position):
         res = dict()
-{'account_id': 'hx003', 'date': '20230526', 'wid': '603369.SH', 'last_update_time': 1685068828500132, 'current_long_pos': 9000, 'td_long_pos': 9000, 'td_short_pos': 0, 'yd_long_pos': 0, 'yd_short_pos': 0, 'pending_long_close_pos': 0, 'pending_short_close_pos': 0, 'pending_long_open_pos': 0, 'pending_short_open_pos': 0}
         res["AccountUid"] = position["account_id"]
         eid_list = position["wid"].split(".")
         res["InstrumentId"] = eid_list[0]
@@ -131,7 +129,7 @@ def test(config_file="./account.ini"):
     q = HPIQuery(config["Trade"])
     #q.query_order();
     q.query("trade")
-    q.query("order")
+    q.query("sub_order")
     q.query_position();
     #q.query_account()
 
