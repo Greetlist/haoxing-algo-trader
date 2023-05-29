@@ -46,6 +46,7 @@ class HPIQuery:
                     limit=self.query_num,
                 )
             data_list = query_res["data"]
+            print(self.trader.sys_id_local_id_map)
             for item in data_list:
                 total_convert_list.append(self.convert_item(item, ftype))
 
@@ -55,7 +56,10 @@ class HPIQuery:
                 break
 
         df = pd.DataFrame(total_convert_list)
-        dump_name = "{}_{}.csv".format(self.today_str, ftype)
+        dump_name = \
+            self.config["output_sub_order_template"].format(self.today_str, ftype) \
+            if ftype == "sub_order" \
+            else self.config["output_trade_template"].format(self.today_str, ftype)
         self.dump_to_csv(df, dump_name)
 
     def query_position(self):
@@ -65,7 +69,7 @@ class HPIQuery:
         for position in positions:
             position_list.append(self.convert_position_item(position))
         df = pd.DataFrame(position_list)
-        dump_name = "{}_pos.csv".format(self.today_str)
+        dump_name = self.config["output_position_template"].format(self.today_str)
         self.dump_to_csv(df, dump_name)
 
     def query_account(self):
@@ -82,7 +86,7 @@ class HPIQuery:
     def convert_item(self, trade, ftype):
         res = dict()
         res["AccountUid"] = self.account_id
-        res["OrderId"] = self.trader.sys_id_local_id_map[trade["client_task_id"]]
+        res["OrderId"] = self.trader.sys_id_local_id_map.get(trade["client_task_id"], "-1")
         res["OrderSysId"] = trade["client_task_id"]
         eid_list = trade["wid"].split(".")
         res["InstrumentId"] = eid_list[0]
@@ -127,11 +131,11 @@ def test(config_file="./account.ini"):
     config = configparser.ConfigParser()
     config.read(config_file)
     q = HPIQuery(config["Trade"])
-    #q.query_order();
+    q.query_order();
     q.query("trade")
     q.query("sub_order")
     q.query_position();
-    #q.query_account()
+    q.query_account()
 
 if __name__ == '__main__':
     argh.dispatch_commands([test])

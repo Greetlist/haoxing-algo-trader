@@ -12,6 +12,7 @@ import subprocess as sub
 import threading
 from threading import Lock
 import copy
+import math
 
 class HPITrader:
     def __init__(self, config):
@@ -84,7 +85,7 @@ class HPITrader:
         order_csv_filename = self.config["output_order_template"].format(self.today_str)
         if not os.path.exists(order_csv_filename):
             return res
-        df = pd.read_csv(order_csv_filename, usecols=["OrderId", "OrderSysId"])
+        df = pd.read_csv(order_csv_filename, usecols=["OrderId", "OrderSysId"], dtype=str)
         for item in df.to_dict("records"):
             res[item["OrderSysId"]] = item["OrderId"]
         return res
@@ -107,7 +108,7 @@ class HPITrader:
             self.query_api.query("sub_order")
             self.query_api.query_position()
             self.order_map_mutex.release()
-            time.sleep(60)
+            time.sleep(int(self.config["query_interval"]))
 
     def start(self):
         while not self.stop:
@@ -120,7 +121,7 @@ class HPITrader:
 
                 target_pos_df = pd.read_csv(
                     self.targetpos_filename,
-                    dtype={"OrderID":str, "InstrumentID":str})[self.start_order_index:]
+                    dtype={"OrderId":str, "InstrumentID":str})[self.start_order_index:]
                 task_list = self.gen_total_task_list(target_pos_df)
                 self.last_change_time = file_stat.st_ctime
                 if len(task_list) <= 0:
@@ -128,7 +129,7 @@ class HPITrader:
 
                 self.logger.info("Start to Send Orders")
                 self.order_map_mutex.acquire()
-                self.batch_send_order(task_list)
+                self.batch_send_order(target_pos_df, task_list)
                 self.order_map_mutex.release()
 
     def gen_total_task_list(self, df):
@@ -152,12 +153,13 @@ class HPITrader:
             task_list.append(single_task)
         return task_list
 
-    def batch_send_order(self, total_task_list):
+    def batch_send_order(self, target_pos_df, total_task_list):
         send_per_round = int(self.config["send_order_per_round"])
-        send_round = len(total_task_list) / send_per_round + 1
+        send_round = math.ceil(len(total_task_list) / send_per_round)
         total_res_list = []
         for i in range(send_round):
-            res = self.trade_api.create_tasks(total_task_list[i*send_per_round:(i+1)*send_per_round])
+            task_list = total_task_list[i*send_per_round:(i+1)*send_per_round]
+            res = self.trade_api.create_tasks(task_list)
             self.logger.info(res)
             total_res_list.extend(res["datas"])
 
@@ -172,12 +174,12 @@ class HPITrader:
         assert len(target_pos_list) == len(res_list), "TargetPos Length != ResList Length"
         order_csv_filename = self.config["output_order_template"].format(self.today_str)
         order_list = [] \
-            if not os.path.exists(failed_csv_filename) \
-            else pd.read_csv(failed_csv_filename, dtype={"OrderID":str, "InstrumentID":str}).to_dict('records')
+            if not os.path.exists(order_csv_filename) \
+            else pd.read_csv(order_csv_filename, dtype={"OrderID":str, "InstrumentID":str}).to_dict('records')
         for idx in range(len(target_pos_list)):
             target_pos_item = target_pos_list[idx]
             res_item = res_list[idx]
-            self.sys_id_local_id_map[res_item["client_task_id"]] = target_pos_item["OrderId"]
+            self.sys_id_local_id_map[str(res_item["client_task_id"])] = target_pos_item["OrderId"]
             order_list.append(self.gen_order_item(target_pos_item, res_item))
         if len(order_list) == 0:
             return
@@ -198,7 +200,7 @@ class HPITrader:
         res["OrderSize"] = target_pos_item["Qty"]
         res["OrderRemainSize"] = target_pos_item["Qty"]
         res["OrderTime"] = dt.datetime.now().strftime("%Y%m%d%H%M%S")
-        res["ErrorMsg"] = single_res["message"] if res_item["error_code"] != 0 else ""
+        res["ErrorMsg"] = res_item["message"] if res_item["error_code"] != 0 else ""
         return res
 
     def convert_exchange(self, origin_exchange):
@@ -209,7 +211,6 @@ class HPITrader:
 
     def convert_time(self, time_str):
         d = dt.datetime.strptime(time_str, "%H:%M:%S")
-        self.logger.info("Hour: {}, Minute: {}, Second: {}".format(d.hour, d.minute, d.second))
         return d.hour * 10000 + d.minute * 100 + d.second
 
     def save_idx(self):
