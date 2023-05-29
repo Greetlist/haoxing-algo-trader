@@ -107,6 +107,7 @@ class HPITrader:
             self.query_api.query("trade")
             self.query_api.query("sub_order")
             self.query_api.query_position()
+            self.query_api.query_account()
             self.order_map_mutex.release()
             time.sleep(int(self.config["query_interval"]))
 

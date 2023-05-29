@@ -77,6 +77,9 @@ class HPIQuery:
             account_id=self.account_id
         )
         print(cash_info)
+        df = pd.DataFrame(cash_info)
+        dump_name = self.config["output_account_template"].format(self.today_str)
+        self.dump_to_csv(df, dump_name)
 
     def dump_to_csv(self, df, dump_name):
         tmp_name = dump_name + ".tmp"
@@ -130,11 +133,10 @@ class HPIQuery:
 def test(config_file="./account.ini"):
     config = configparser.ConfigParser()
     config.read(config_file)
-    q = HPIQuery(config["Trade"])
-    q.query_order();
-    q.query("trade")
-    q.query("sub_order")
-    q.query_position();
+    q = HPIQuery(config["Trade"], None)
+    #q.query("trade")
+    #q.query("sub_order")
+    #q.query_position();
     q.query_account()
 
 if __name__ == '__main__':
